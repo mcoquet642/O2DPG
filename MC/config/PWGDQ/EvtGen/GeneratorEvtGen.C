@@ -16,7 +16,7 @@ R__ADD_INCLUDE_PATH($EVTGEN_ROOT/include)
 #include "EvtGenBase/EvtReport.hh"
 #include "EvtGenExternal/EvtExternalGenList.hh"
 
-enum DecayModeEvt {kEvtAll=0, kEvtBJpsiDiElectron, kEvtBJpsi, kEvtBJpsiDiMuon, kEvtBPsiDiElectron, kEvtBPsiDiMuon, kEvtBSemiElectronic, kEvtHadronicD, kEvtHadronicDWithout4Bodies, kEvtChiToJpsiGammaToElectronElectron, kEvtChiToJpsiGammaToMuonMuon, kEvtSemiElectronic, kEvtBSemiMuonic, kEvtSemiMuonic, kEvtDiElectron, kEvtDiMuon, kEvtBPsiPrimeDiMuon, kEvtBPsiPrimeDiElectron, kEvtJpsiDiMuon, kEvtPsiPrimeJpsiDiElectron, kEvtPhiKK, kEvtOmega, kEvtLambda, kEvtHardMuons, kEvtElectronEM, kEvtDiElectronEM, kEvtGammaEM, kEvtBeautyUpgrade};
+enum DecayModeEvt {kEvtAll=0, kEvtBJpsiDiElectron, kEvtBJpsi, kEvtBJpsiDiMuon, kEvtBSemiElectronic, kEvtHadronicD, kEvtHadronicDWithout4Bodies, kEvtChiToJpsiGammaToElectronElectron, kEvtChiToJpsiGammaToMuonMuon, kEvtSemiElectronic, kEvtBSemiMuonic, kEvtSemiMuonic, kEvtDiElectron, kEvtDiMuon, kEvtBPsiPrimeDiMuon, kEvtBPsiPrimeDiElectron, kEvtJpsiDiMuon, kEvtPsiPrimeJpsiDiElectron, kEvtPhiKK, kEvtOmega, kEvtLambda, kEvtHardMuons, kEvtElectronEM, kEvtDiElectronEM, kEvtGammaEM, kEvtBeautyUpgrade, kBc3Muon};
 
 
 namespace o2 {
@@ -243,12 +243,6 @@ void ForceDecay()
      case kEvtBJpsiDiMuon:
       SetDecayTable(Form("%s/BTOJPSITOMU.DEC",pathO2.Data()));
       break;
-     case kEvtBPsiDiElectron:
-      SetDecayTable(Form("%s/BTOPSITOELE.DEC",pathO2.Data()));
-      break;
-     case kEvtBPsiDiMuon:
-      SetDecayTable(Form("%s/BTOPSITOMU.DEC",pathO2.Data()));
-      break;
      case kEvtBSemiElectronic:
       SetDecayTable(Form("%s/BTOELE.DEC",pathO2.Data()));
       break;
@@ -314,6 +308,9 @@ void ForceDecay()
       break;
      case kEvtBeautyUpgrade:
       SetDecayTable(Form("%s/BEAUTYUPGRADE.DEC",pathO2.Data()));
+      break; 
+     case kBc3Muon:
+      SetDecayTable(Form("%s/BC3MUON.DEC",pathO2.Data()));
       break; 
     }
     return;
