@@ -92,7 +92,7 @@ To set up such a workflow, a couple of points must be followed:
 
 For an example, chek the calibration workflows [here](testing/examples)
 
-*NOTE* For reference, to run a workflow with calib aggregator on the EPN with AliECS, currently a node from the `online-calib` zone must be requested, by setting `odc_resources` to `[ {"zone":"online", "n":10}, {"zone":"online-calib", "n":1 } ]` (adjust the `10` to the number of required reconstruction nodes). This will be improved later and then this extra setting will not be needed anymore.
+*NOTE* For reference, to run a workflow with calib aggregator on the EPN with AliECS, currently a node from the `calib` zone must be requested, by setting `odc_resources` to `[ {"zone":"online", "n":10}, {"zone":"calib", "n":1 } ]` (adjust the `10` to the number of required reconstruction nodes). This will be improved later and then this extra setting will not be needed anymore.
 
 # The parser script:
 The **parser** is a simple python script that parses a *topology description* and generates the DDS XML file with the *full topology*. To do so, it runs all the DPL workflows with the `--dds` option and then uses the `odc-topo-epn` tool to merge the *partial topology*  into the final *full topology*.
@@ -110,7 +110,7 @@ DDWORKFLOW=tools/datadistribution_workflows/dd-processing.xml WORKFLOW_DETECTORS
 ```
 - The following environment variables steer the *Parser*:
   - `$FILEWORKDIR`: This variable must be set and is used by the workflows to specify where all required files (grp, geometry, dictionaries, etc) are located.
-  - `$EPNSYNCMODE`: If set the parser assumes it is running on the EPN for synchronous processing. If so it will automatically load the modules specified in the topology description. This variable is further used by the workflows themselves, e.g. to activate the InfoLogger and the Metrics monitoring.
+  - `$EPNSYNCMODE`: If set the parser assumes it is running on the EPN for synchronous processing. If so it will automatically load the modules specified in the topology description. This variable is further used by the workflows themselves, e.g. to activate the InfoLogger and the Metrics monitoring, and to fetch QC JSONs from consul.
   - `$INRAWCHANNAME`: Propagated to the workflow, defines the raw FMQ channel name used for the communication with DataDistribution.
   - `$RECO_NUM_NODES_OVERRIDE`: Overrides the number of nodes used for reconstruction (empty or 0 to disable)
   - `$DDMODE`: How to operate DataDistribution: **discard** (build TF and discard them), **disk** (build TF and store to disk), **processing** (build TF and run DPL workflow on TF data), **processing-disk** (both store TF to disk and run processing).

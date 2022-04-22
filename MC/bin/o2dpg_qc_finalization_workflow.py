@@ -29,31 +29,40 @@ def getDPL_global_options(bigshm=False, noIPC=None):
       return common
 
 qcdir = "QC"
-def include_all_QC_finalization(ntimeframes, standalone, run):
+def include_all_QC_finalization(ntimeframes, standalone, run, productionTag):
 
   stages = []
-  def add_QC_finalization(taskName, qcConfigPath, needs=[]):
-    if len(needs) == 0 and standalone == False:
+  def add_QC_finalization(taskName, qcConfigPath, needs=None):
+    if standalone == True:
+      needs = []
+    elif needs == None:
       needs = [taskName + '_local' + str(tf) for tf in range(1, ntimeframes + 1)]
+
     task = createTask(name=taskName + '_finalize', needs=needs, cwd=qcdir, lab=["QC"], cpu=1, mem='2000')
-    task['cmd'] = 'o2-qc --config ' + qcConfigPath + ' --remote-batch ' + taskName + '.root --override-values "qc.config.Activity.number=' + str(run) + '" ' + getDPL_global_options()
+    task['cmd'] = f'o2-qc --config {qcConfigPath} --remote-batch {taskName}.root' + \
+                  f' --override-values "qc.config.Activity.number={run};qc.config.Activity.periodName={productionTag}"' + \
+                  ' ' + getDPL_global_options()
     stages.append(task)
 
-
   # to be enabled once MFT Digits should be ran 5 times with different settings
-  #MFTDigitsQCneeds = []
-  #for flp in range(5):
-  #  MFTDigitsQCneeds.extend(['mftDigitsQC_local_'+str(flp)+'_'+str(tf) for tf in range(1, ntimeframes + 1)])
+  MFTDigitsQCneeds = []
+  for flp in range(5):
+    MFTDigitsQCneeds.extend(['mftDigitsQC'+str(flp)+'_local'+str(tf) for tf in range(1, ntimeframes + 1)])
   #
-  #add_QC_finalization('mftDigitsQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/qc-mft-digit.json', MFTDigitsQCneeds)
-  add_QC_finalization('mftDigitsQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/qc-mft-digit.json')
+  add_QC_finalization('mftDigitsQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/qc-mft-digit-0.json', MFTDigitsQCneeds)
   add_QC_finalization('mftClustersQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/qc-mft-cluster.json')
   add_QC_finalization('mftAsyncQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/qc-mft-async.json')
+  add_QC_finalization('emcDigitsQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/emc-digits-task.json')
   #add_QC_finalization('tpcTrackingQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/tpc-qc-tracking-direct.json')
+  add_QC_finalization('tpcStandardQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/tpc-qc-standard-direct.json')
   add_QC_finalization('trdDigitsQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/trd-digits-task.json')
   add_QC_finalization('vertexQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/vertexing-qc-direct-mc.json')
   add_QC_finalization('ITSTPCmatchQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/ITSTPCmatchedTracks_direct_MC.json')
   add_QC_finalization('TOFMatchQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/tofMatchedTracks_ITSTPCTOF_TPCTOF_direct_MC.json')
+  add_QC_finalization('tofDigitsQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/tofdigits.json')
+  add_QC_finalization('TOFMatchWithTRDQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/tofMatchedTracks_AllTypes_direct_MC.json')
+  add_QC_finalization('ITSTrackSimTask', 'json://${O2DPG_ROOT}/MC/config/QC/json/its-mc-tracks-qc.json')
+  add_QC_finalization('RecPointsQC', 'json://${O2DPG_ROOT}/MC/config/QC/json/ft0-reconstruction-config.json')
 
   return stages
 
@@ -65,6 +74,7 @@ def main() -> int:
   parser.add_argument('--noIPC',help='disable shared memory in DPL')
   parser.add_argument('-o',help='output workflow file', default='workflow.json')
   parser.add_argument('-run',help="Run number for this MC", default=300000)
+  parser.add_argument('-productionTag',help="Production tag for this MC", default='unknown')
 
   args = parser.parse_args()
   print (args)
@@ -87,7 +97,7 @@ def main() -> int:
     mkdir(qcdir)
 
   workflow={}
-  workflow['stages'] = include_all_QC_finalization(ntimeframes=1, standalone=True, run=args.run)
+  workflow['stages'] = include_all_QC_finalization(ntimeframes=1, standalone=True, run=args.run, productionTag=args.productionTag)
   
   dump_workflow(workflow["stages"], args.o)
   

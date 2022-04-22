@@ -73,6 +73,9 @@ actionlogger = setup_logger('pipeline_action_logger', ('pipeline_action_' + str(
 # second file logger
 metriclogger = setup_logger('pipeline_metric_logger', ('pipeline_metric_' + str(os.getpid()) + '.log', args.action_logfile)[args.action_logfile!=None])
 
+# Immediately log imposed memory and CPU limit as well as further useful meta info
+metriclogger.info({"cpu_limit": args.cpu_limit, "mem_limit": args.mem_limit, "workflow_file": os.path.abspath(args.workflowfile), "target_task": args.target_tasks, "rerun_from": args.rerun_from, "target_labels": args.target_labels})
+
 # for debugging without terminal access
 # TODO: integrate into standard logger
 def send_webhook(hook, t):
@@ -322,8 +325,28 @@ def filter_workflow(workflowspec, targets=[], targetlabels=[]):
     # helper lookup
     tasknametoid = { t['name']:i for i, t in enumerate(workflowspec['stages'],0) }
 
+    # check if a task can be run at all 
+    # or not due to missing requirements
+    def canBeDone(t,cache={}):
+       ok = True
+       c = cache.get(t['name'])
+       if c != None:
+           return c
+       for r in t['needs']:
+           taskid = tasknametoid.get(r)
+           if taskid != None:
+             if not canBeDone(workflowspec['stages'][taskid], cache):
+                ok = False
+                break
+           else:
+             ok = False
+             break
+       cache[t['name']] = ok
+       return ok
+
+    okcache = {}
     # build full target list
-    full_target_list = [ t for t in workflowspec['stages'] if task_matches(t['name']) and task_matches_labels(t) ]
+    full_target_list = [ t for t in workflowspec['stages'] if task_matches(t['name']) and task_matches_labels(t) and canBeDone(t,okcache) ]
     full_target_name_list = [ t['name'] for t in full_target_list ]
 
     # build full dependency list for a task t
@@ -506,7 +529,7 @@ class WorkflowExecutor:
                   return None
 
           if not os.path.isdir(workdir):
-                  os.mkdir(workdir)
+                  os.makedirs(workdir)
 
       self.procstatus[tid]='Running'
       if args.dry_run:
@@ -974,6 +997,7 @@ class WorkflowExecutor:
 
 
     def execute(self):
+        starttime = time.perf_counter()
         psutil.cpu_percent(interval=None)
         os.environ['JOBUTILS_SKIPDONE'] = "ON"
 
@@ -1082,8 +1106,9 @@ class WorkflowExecutor:
 
             self.SIGHandler(0,0)
 
-        print ('\n**** Pipeline done *****\n')
-        # self.analyse_files_and_connections()
+        endtime = time.perf_counter()
+        print ('\n**** Pipeline done (global_runtime : {:.3f}s) *****\n'.format(endtime-starttime))
+
 
 
 

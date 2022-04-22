@@ -39,9 +39,9 @@
         "taskParameters": {
           "layer": "1111111",
           "clusterDictionaryPath": "/home/epn/odc/files/ITSdictionary.bin",
-          "runNumberPath": "/home/its/QC/workdir/infiles/RunNumber.dat",
           "geomPath": "/home/epn/odc/files/o2sim_geometry.root",
-          "nThreads": "4"
+          "nThreads": "1",
+          "nBCbins" : "103"
         },
           "localMachines": [
           "localhost", "epn"
@@ -65,9 +65,12 @@
         "location": "local",
         "taskParameters" : {
           "runNumberPath" : "/home/its/QC/workdir/infiles/RunNumber.dat",
-	  "vertexXYsize" : "0.1",
+	  "vertexXYsize" : "0.5",
 	  "vertexZsize": "15",
-	  "vertexRsize": "0.1"
+	  "vertexRsize": "0.8",
+          "NtracksMAX"  : "100",
+          "doTTree": "0",
+          "nBCbins" : "103"
         },
         "localMachines": [
           "localhost", "epn"
@@ -89,7 +92,20 @@
             "type": "Task",
             "name": "ITSClusterTask",
             "MOs": [
-              "Layer0/AverageClusterSize"
+              "Layer0/AverageClusterSize",
+              "Layer1/AverageClusterSize",
+              "Layer2/AverageClusterSize",
+              "Layer3/AverageClusterSize",
+              "Layer4/AverageClusterSize",
+              "Layer5/AverageClusterSize",
+              "Layer6/AverageClusterSize",
+              "Layer0/ClusterOccupation",
+              "Layer1/ClusterOccupation",
+              "Layer2/ClusterOccupation",
+              "Layer3/ClusterOccupation",
+              "Layer4/ClusterOccupation",
+              "Layer5/ClusterOccupation",
+              "Layer6/ClusterOccupation"
             ]
           }
         ]
@@ -105,7 +121,13 @@
             "type": "Task",
             "name": "ITSTrackTask",
             "MOs": [
-              "NClusters"
+              "NClusters",
+              "PhiDistribution",
+              "AngularDistribution",
+              "EtaDistribution",
+              "VertexCoordinates",
+              "VertexRvsZ",
+              "VertexZ"
             ]
           }
         ]
@@ -117,7 +139,7 @@
       "id": "compclus",
       "active": "true",
       "machines": [],
-      "query": "compclus:ITS/COMPCLUSTERS/0;clustersrof:ITS/CLUSTERSROF/0",
+      "query": "compclus:ITS/COMPCLUSTERS/0;clustersrof:ITS/CLUSTERSROF/0;patterns:ITS/PATTERNS/0",
       "samplingConditions": [
         {
           "condition": "random",
@@ -131,7 +153,7 @@
       "id": "tracks",
       "active": "true",
       "machines": [],
-      "query" : "Vertices:ITS/VERTICES/0;tracks:ITS/TRACKS/0;rofs:ITS/ITSTrackROF/0;compclus:ITS/COMPCLUSTERS/0",
+      "query": "Vertices:ITS/VERTICES/0;tracks:ITS/TRACKS/0;rofs:ITS/ITSTrackROF/0;clustersrof:ITS/CLUSTERSROF/0;compclus:ITS/COMPCLUSTERS/0",
       "samplingConditions": [
         {
           "condition": "random",
