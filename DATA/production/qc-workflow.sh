@@ -19,7 +19,7 @@ if [[ -z $QC_JSON_FROM_OUTSIDE ]]; then
     [[ -z "$QC_JSON_MID" ]] && QC_JSON_MID=/home/dstocco/config/mid-qcmn-epn-digits.json
     [[ -z "$QC_JSON_CPV" ]] && QC_JSON_CPV=consul://o2/components/qc/ANY/any/cpv-physics-qcmn-epn
     [[ -z "$QC_JSON_TRD" ]] && QC_JSON_TRD=consul://o2/components/qc/ANY/any/trd-full-qcmn-norawdatastats-epn
-    [[ -z "$QC_JSON_PHS" ]] && QC_JSON_PHS=consul://o2/components/qc/ANY/any/phos-raw-clusters-flpepn
+    [[ -z "$QC_JSON_PHS" ]] && QC_JSON_PHS=consul://o2/components/qc/ANY/any/phos-raw-clusters-epn
     [[ -z "$QC_JSON_PRIMVTX" ]] && QC_JSON_PRIMVTX=/home/shahoian/jsons/vertexing-qc.json
     [[ -z "$QC_JSON_GLOBAL" ]] && QC_JSON_GLOBAL=$O2DPG_ROOT/DATA/production/qc-sync/qc-global.json
   elif [[ $SYNCMODE == 1 ]]; then
@@ -80,6 +80,7 @@ if [[ -z $QC_JSON_FROM_OUTSIDE ]]; then
 
   JSON_FILES=
   OUTPUT_SUFFIX=
+  QC_CONFIG=
   for i in `echo $LIST_OF_DETECTORS | sed "s/,/ /g"`; do
     DET_JSON_FILE="QC_JSON_$i"
     if has_detector_qc $i && [ ! -z "${!DET_JSON_FILE}" ]; then
@@ -116,6 +117,7 @@ if [[ -z $QC_JSON_FROM_OUTSIDE ]]; then
     if [[ "0$QC_REDIRECT_MERGER_TO_LOCALHOST" == "01" ]]; then
       sed -i.bak -E 's/( *)"remoteMachine" *: *".*"(,?) *$/\1"remoteMachine": "127.0.0.1"\2/' $MERGED_JSON_FILENAME
       unlink $MERGED_JSON_FILENAME.bak
+      QC_CONFIG+="--override-values \"qc.config.database.host=ccdb-test.cern.ch:8080\""
     fi
     QC_JSON_FROM_OUTSIDE="$MERGED_JSON_FILENAME"
   fi
@@ -124,7 +126,7 @@ if [[ -z $QC_JSON_FROM_OUTSIDE ]]; then
 fi
 
 if [[ ! -z "$QC_JSON_FROM_OUTSIDE" ]]; then
-  add_W o2-qc "--config json://$QC_JSON_FROM_OUTSIDE ${QC_CONFIG_PARAM:---local --host ${QC_HOST:-localhost}}" "" 0
+  add_W o2-qc "--config json://$QC_JSON_FROM_OUTSIDE ${QC_CONFIG_PARAM:---local --host ${QC_HOST:-localhost}} ${QC_CONFIG}" "" 0
 fi
 
 true # everything OK up to this point, so the script should return 0 (it is !=0 if the last check failed)

@@ -51,6 +51,7 @@ parser.add_argument('--webhook', help=argparse.SUPPRESS) # log some infos to thi
 parser.add_argument('--checkpoint-on-failure', help=argparse.SUPPRESS) # debug option making a debug-tarball and sending to specified address
                                                                        # argument is alien-path
 parser.add_argument('--retry-on-failure', help=argparse.SUPPRESS, default=2) # number of times a failing task is retried
+parser.add_argument('--rootinit-speedup', help=argparse.SUPPRESS, action='store_true') # enable init of ROOT environment vars to speedup init/startup
 parser.add_argument('--action-logfile', help='Logfilename for action logs. If none given, pipeline_action_#PID.log will be used')
 parser.add_argument('--metric-logfile', help='Logfilename for metric logs. If none given, pipeline_metric_#PID.log will be used')
 args = parser.parse_args()
@@ -878,8 +879,21 @@ class WorkflowExecutor:
            tarcommand = get_tar_command(filename=fn)
            actionlogger.info("Taring " + tarcommand)
 
+           # create a README file with instruction on how to use checkpoint
+           readmefile=open('README_CHECKPOINT_PID' + str(os.getpid()) + '.txt','w')
+
+           for tid in taskids:
+             taskspec = self.workflowspec['stages'][tid]
+             name = taskspec['name']
+             readmefile.write('Checkpoint created because of failure in task ' + name + '\n')
+             readmefile.write('In order to reproduce with this checkpoint, do the following steps:\n')
+             readmefile.write('a) setup the appropriate O2sim environment using alienv\n')
+             readmefile.write('b) run: $O2DPG_ROOT/MC/bin/o2_dpg_workflow_runner.py -f workflow.json -tt ' + name + '$ --retry-on-failure 0\n')
+           readmefile.close()
+
            # first of all the base directory
            os.system(tarcommand)
+
            # then we add stuff for the specific timeframes ids if any
            for tid in taskids:
              taskspec = self.workflowspec['stages'][tid]
@@ -888,6 +902,10 @@ class WorkflowExecutor:
                tarcommand = get_tar_command(dir=directory, flags='rf', filename=fn)
                actionlogger.info("Tar command is " + tarcommand)
                os.system(tarcommand)
+
+           # prepend file:/// to denote local file
+           fn = "file://" + fn
+           actionlogger.info("Local checkpoint file is " + fn)
 
            # location needs to be an alien path of the form alien:///foo/bar/
            copycommand='alien.py cp ' + fn + ' ' + str(location) + '@disk:1'
@@ -1000,6 +1018,31 @@ class WorkflowExecutor:
         starttime = time.perf_counter()
         psutil.cpu_percent(interval=None)
         os.environ['JOBUTILS_SKIPDONE'] = "ON"
+
+        def speedup_ROOT_Init():
+               """initialize some env variables that speed up ROOT init
+               and prevent ROOT from spawning many short-lived child
+               processes"""
+
+               # a) the PATH for system libraries
+               # search taken from ROOT TUnixSystem
+               cmd='LD_DEBUG=libs LD_PRELOAD=DOESNOTEXIST ls /tmp/DOESNOTEXIST 2>&1 | grep -m 1 "system search path" | sed \'s/.*=//g\' | awk \'//{print $1}\''
+               proc = subprocess.Popen([cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+               libpath, err = proc.communicate()
+               if (args.rootinit_speedup):
+                  print ("setting up ROOT system")
+                  os.environ['ROOT_LDSYSPATH'] = libpath.decode()
+
+               # b) the PATH for compiler includes needed by Cling
+               cmd='LC_ALL=C c++ -xc++ -E -v /dev/null 2>&1 | sed -n \'/^.include/,${/^ \/.*++/{p}}\'' # | sed \'s/ //\''
+               proc = subprocess.Popen([cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+               incpath, err = proc.communicate()
+               incpaths = [ line.lstrip() for line in incpath.decode().splitlines() ]
+               joined = ':'.join(incpaths)
+               if (args.rootinit_speedup):
+                  os.environ['ROOT_CPPSYSINCL'] = joined
+
+        speedup_ROOT_Init()
 
         # we make our own "tmp" folder
         # where we can put stuff such as tmp socket files etc (for instance DPL FAIR-MQ sockets)

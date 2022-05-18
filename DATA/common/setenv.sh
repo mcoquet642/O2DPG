@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# used to avoid sourcing this file 2x
+if [[ -z $SOURCE_GUARD_SETENV ]]; then
+SOURCE_GUARD_SETENV=1
+
 # Make sure we can open sufficiently many files / allocate enough memory
 if [[ "0$SETENV_NO_ULIMIT" != "01" ]]; then
   ulimit -S -n 4096 && ulimit -S -m unlimited && ulimit -S -v unlimited && [[ -z "$GPUTYPE" ]] || [[ "$GPUTYPE" == "CPU" ]] || ulimit -S -l unlimited
@@ -22,7 +26,7 @@ fi
 
 LIST_OF_DETECTORS="ITS,MFT,TPC,TOF,FT0,MID,EMC,PHS,CPV,ZDC,FDD,HMP,FV0,TRD,MCH,CTP"
 
-LIST_OF_GLORECO="ITSTPC,TPCTRD,ITSTPCTRD,TPCTOF,ITSTPCTOF,MFTMCH,PRIMVTX,SECVTX,AOD"
+LIST_OF_GLORECO="ITSTPC,TPCTRD,ITSTPCTRD,TPCTOF,ITSTPCTOF,MFTMCH,MCHMID,PRIMVTX,SECVTX,AOD"
 
 # Detectors used in the workflow / enabled parameters
 if [[ -z "${WORKFLOW_DETECTORS+x}" ]] || [[ "0$WORKFLOW_DETECTORS" == "0ALL" ]]; then export WORKFLOW_DETECTORS=$LIST_OF_DETECTORS; fi
@@ -225,3 +229,24 @@ add_comma_separated()
     fi
   done
 }
+
+add_semicolon_separated()
+{
+  if (( $# < 2 )); then
+    echo "$# parameters received"
+    echo "Function name: ${FUNCNAME} expects at least 2 parameters:"
+    echo "it concatenates the string in 1st parameter by the following"
+    echo "ones, forming semi-colon-separated string. $# parameters received"
+    exit 1
+  fi
+
+  for ((i = 2; i <= $#; i++ )); do
+    if [[ -z ${!1} ]]; then
+      eval $1+="${!i}"
+    else
+      eval $1+="\;${!i}"
+    fi
+  done
+}
+
+fi # setenv.sh sourced
