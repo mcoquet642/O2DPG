@@ -51,6 +51,8 @@ CALIB_INSPEC="A:TPC/RAWDATA;dd:FLP/DISTSUBTIMEFRAME/0;eos:***/INFORMATION"
 
 #echo GPU_CONFIG $GPU_CONFIG_KEYS;
 
+HOST=localhost
+QC_CONFIG="consul-json://aliecs.cern.ch:8500/o2/components/qc/ANY/any/tpc-raw-qcmn"
 
 o2-dpl-raw-proxy $ARGS_ALL \
     --dataspec "$PROXY_INSPEC" \
@@ -77,8 +79,9 @@ o2-dpl-raw-proxy $ARGS_ALL \
     --publish-after-tfs 50 \
     --max-events 110 \
     | o2-calibration-ccdb-populator-workflow  $ARGS_ALL \
-    --ccdb-path http://ccdb-test.cern.ch:8080 \
-    | o2-dpl-run $ARGS_ALL --dds
+    --ccdb-path http://o2-ccdb.internal \
+    | o2-qc $ARGS_ALL --config $QC_CONFIG --local --host $HOST \
+    | o2-dpl-run $ARGS_ALL --dds ${WORKFLOWMODE_FILE}
 
 #    --pipeline tpc-tracker:4 \
 

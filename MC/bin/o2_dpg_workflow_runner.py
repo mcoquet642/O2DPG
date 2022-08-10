@@ -13,6 +13,7 @@ import signal
 import socket
 import sys
 import traceback
+import platform
 try:
     from graphviz import Digraph
     havegraphviz=True
@@ -33,6 +34,7 @@ parser = argparse.ArgumentParser(description='Parallel execution of a (O2-DPG) D
 
 parser.add_argument('-f','--workflowfile', help='Input workflow file name', required=True)
 parser.add_argument('-jmax','--maxjobs', help='Number of maximal parallel tasks.', default=100)
+parser.add_argument('-k','--keep-going', action='store_true', help='Keep executing the pipeline as far possibe (not stopping on first failure)')
 parser.add_argument('--dry-run', action='store_true', help='Show what you would do.')
 parser.add_argument('--visualize-workflow', action='store_true', help='Saves a graph visualization of workflow.')
 parser.add_argument('--target-labels', nargs='+', help='Runs the pipeline by target labels (example "TPC" or "DIGI").\
@@ -50,8 +52,8 @@ parser.add_argument('--stdout-on-failure', action='store_true', help='Print log 
 parser.add_argument('--webhook', help=argparse.SUPPRESS) # log some infos to this webhook channel
 parser.add_argument('--checkpoint-on-failure', help=argparse.SUPPRESS) # debug option making a debug-tarball and sending to specified address
                                                                        # argument is alien-path
-parser.add_argument('--retry-on-failure', help=argparse.SUPPRESS, default=2) # number of times a failing task is retried
-parser.add_argument('--rootinit-speedup', help=argparse.SUPPRESS, action='store_true') # enable init of ROOT environment vars to speedup init/startup
+parser.add_argument('--retry-on-failure', help=argparse.SUPPRESS, default=0) # number of times a failing task is retried
+parser.add_argument('--no-rootinit-speedup', help=argparse.SUPPRESS, action='store_true') # disable init of ROOT environment vars to speedup init/startup
 parser.add_argument('--action-logfile', help='Logfilename for action logs. If none given, pipeline_action_#PID.log will be used')
 parser.add_argument('--metric-logfile', help='Logfilename for metric logs. If none given, pipeline_metric_#PID.log will be used')
 args = parser.parse_args()
@@ -448,7 +450,8 @@ class WorkflowExecutor:
       self.cpulimit = float(args.cpu_limit)
       self.procstatus = { tid:'ToDo' for tid in range(len(self.workflowspec['stages'])) }
       self.taskneeds= { t:set(self.getallrequirements(t)) for t in self.taskuniverse }
-      self.stoponfailure = True
+      self.stoponfailure = not (args.keep_going == True)
+      print ("Stop on failure ",self.stoponfailure)
       self.max_jobs_parallel = int(jmax)
       self.scheduling_iteration = 0
       self.process_list = []  # list of currently scheduled tasks with normal priority
@@ -774,10 +777,9 @@ class WorkflowExecutor:
             # --> We could use this for corrective actions such as killing jobs currently back-filling
             # (or better hibernating)
 
-    def waitforany(self, process_list, finished):
+    def waitforany(self, process_list, finished, failingtasks):
        failuredetected = False
        failingpids = []
-       failingtasks = []
        if len(process_list)==0:
            return False
 
@@ -795,10 +797,10 @@ class WorkflowExecutor:
             finished.append(tid)
             process_list.remove(p)
             if returncode != 0:
-               print (str(tid) + ' failed ... checking retry')
+               print (str(self.idtotask[tid]) + ' failed ... checking retry')
                # we inspect if this is something "unlucky" which could be resolved by a simple resubmit
                if self.is_worth_retrying(tid) and self.retry_counter[tid] < int(args.retry_on_failure):
-                 print (str(tid) + ' to be retried')
+                 print (str(self.idtotask[tid]) + ' to be retried')
                  actionlogger.info ('Task ' + str(self.idtotask[tid]) + ' failed but marked to be retried ')
                  self.tids_marked_toretry.append(tid)
                  self.retry_counter[tid] += 1
@@ -863,8 +865,8 @@ class WorkflowExecutor:
         # and copies it to a specific ALIEN location. Not a core function
         # just some tool get hold on error conditions appearing on the GRID.
 
-        def get_tar_command(dir='./', flags='cf', filename='checkpoint.tar'):
-            return 'find ' + str(dir) + ' -maxdepth 1 -type f -print0 | xargs -0 tar ' + str(flags) + ' ' + str(filename)
+        def get_tar_command(dir='./', flags='cf', findtype='f', filename='checkpoint.tar'):
+            return 'find ' + str(dir) + ' -maxdepth 1 -type ' + str(findtype) + ' -print0 | xargs -0 tar ' + str(flags) + ' ' + str(filename)
 
         if location != None:
            print ('Making a failure checkpoint')
@@ -900,6 +902,10 @@ class WorkflowExecutor:
              directory = taskspec['cwd']
              if directory != "./":
                tarcommand = get_tar_command(dir=directory, flags='rf', filename=fn)
+               actionlogger.info("Tar command is " + tarcommand)
+               os.system(tarcommand)
+               # same for soft links
+               tarcommand = get_tar_command(dir=directory, flags='rf', findtype='l', filename=fn)
                actionlogger.info("Tar command is " + tarcommand)
                os.system(tarcommand)
 
@@ -1018,18 +1024,33 @@ class WorkflowExecutor:
         starttime = time.perf_counter()
         psutil.cpu_percent(interval=None)
         os.environ['JOBUTILS_SKIPDONE'] = "ON"
+        # a bit ALICEO2+O2DPG specific but for now a convenient place to
+        # restore original behaviour of ALICEO2_CCDB_LOCALCACHE semantics
+        # TODO: introduce a proper workflow-globalinit section which is defined inside the workflow json
+        if os.environ.get('ALICEO2_CCDB_LOCALCACHE') != None:
+           os.environ['IGNORE_VALIDITYCHECK_OF_CCDB_LOCALCACHE'] = "ON"
+
+        errorencountered = False
 
         def speedup_ROOT_Init():
                """initialize some env variables that speed up ROOT init
                and prevent ROOT from spawning many short-lived child
                processes"""
 
+               # only do it on Linux
+               if platform.system() != 'Linux':
+                  return
+
+               if os.environ.get('ROOT_LDSYSPATH')!=None and os.environ.get('ROOT_CPPSYSINCL')!=None:
+                  # do nothing if already defined
+                  return
+
                # a) the PATH for system libraries
                # search taken from ROOT TUnixSystem
                cmd='LD_DEBUG=libs LD_PRELOAD=DOESNOTEXIST ls /tmp/DOESNOTEXIST 2>&1 | grep -m 1 "system search path" | sed \'s/.*=//g\' | awk \'//{print $1}\''
                proc = subprocess.Popen([cmd], stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
                libpath, err = proc.communicate()
-               if (args.rootinit_speedup):
+               if not (args.no_rootinit_speedup == True):
                   print ("setting up ROOT system")
                   os.environ['ROOT_LDSYSPATH'] = libpath.decode()
 
@@ -1039,7 +1060,7 @@ class WorkflowExecutor:
                incpath, err = proc.communicate()
                incpaths = [ line.lstrip() for line in incpath.decode().splitlines() ]
                joined = ':'.join(incpaths)
-               if (args.rootinit_speedup):
+               if not (args.no_rootinit_speedup == True):
                   os.environ['ROOT_CPPSYSINCL'] = joined
 
         speedup_ROOT_Init()
@@ -1104,7 +1125,8 @@ class WorkflowExecutor:
                     break
             
                 finished_from_started = [] # to account for finished when actually started
-                while self.waitforany(self.process_list, finished_from_started):
+                failing = []
+                while self.waitforany(self.process_list, finished_from_started, failing):
                     if not args.dry_run:
                         self.monitor(self.process_list) #  ---> make async to normal operation?
                         time.sleep(1) # <--- make this incremental (small wait at beginning)
@@ -1114,6 +1136,16 @@ class WorkflowExecutor:
                 finished = finished + finished_from_started
                 actionlogger.debug("finished now :" + str(finished_from_started))
                 finishedtasks = finishedtasks + finished
+
+                # if a task was marked "failed" and we come here (because
+                # we use --keep-going) ... we need to take out the pid from finished
+                if len(failing) > 0:
+                    # remove these from those marked finished in order
+                    # not to continue with their children
+                    errorencountered = True
+                    for t in failing:
+                        finished = [ x for x in finished if x != t ]
+                        finishedtasks = [ x for x in finishedtasks if x != t ]
 
                 # if a task was marked as "retry" we simply put it back into the candidate list
                 if len(self.tids_marked_toretry) > 0:
@@ -1150,10 +1182,12 @@ class WorkflowExecutor:
             self.SIGHandler(0,0)
 
         endtime = time.perf_counter()
-        print ('\n**** Pipeline done (global_runtime : {:.3f}s) *****\n'.format(endtime-starttime))
+        statusmsg = "success"
+        if errorencountered:
+           statusmsg = "with failures"
 
-
-
+        print ('\n**** Pipeline done ' + statusmsg + ' (global_runtime : {:.3f}s) *****\n'.format(endtime-starttime))
+        return errorencountered
 
 
 if args.cgroup!=None:
@@ -1163,4 +1197,4 @@ if args.cgroup!=None:
     os.system(command)
 
 executor=WorkflowExecutor(args.workflowfile,jmax=args.maxjobs,args=args)
-executor.execute()
+exit (executor.execute())

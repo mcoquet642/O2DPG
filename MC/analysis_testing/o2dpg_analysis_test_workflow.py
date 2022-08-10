@@ -31,7 +31,7 @@
 #                         pass name
 #   --period-name PERIOD_NAME
 #                         prodcution tag
-#   --config CONFIG       overwrite thee default config JSON. Pass as json://<path/to/file>
+#   --config CONFIG       overwrite the default config JSON. Pass as </path/to/file>, will be automatically configured to json://
 #   --only-analyses [ONLY_ANALYSES [ONLY_ANALYSES ...]]
 #                         filter only on these analyses
 #   --merged-task         add merged analysis task (one pipe for all) with name "MergedAnalyses"
@@ -67,7 +67,7 @@ import sys
 import importlib.util
 import argparse
 from os import environ, makedirs
-from os.path import join, exists, abspath, expanduser
+from os.path import join, exists, abspath, expanduser, normpath
 
 # make sure O2DPG + O2 is loaded
 O2DPG_ROOT=environ.get('O2DPG_ROOT')
@@ -84,6 +84,10 @@ sys.modules[module_name] = o2dpg_workflow_utils
 spec.loader.exec_module(o2dpg_workflow_utils)
 from o2dpg_workflow_utils import createTask, dump_workflow
 
+#######################
+# ANALYSIS definition #
+#######################
+
 # some commong definitions
 ANALYSIS_LABEL = "Analysis"
 ANALYSIS_LABEL_MERGED = f"{ANALYSIS_LABEL}Merged"
@@ -91,27 +95,37 @@ ANALYSIS_LABEL_ON_MC = f"{ANALYSIS_LABEL}MC"
 ANALYSIS_VALID_MC = "mc"
 ANALYSIS_VALID_DATA = "data"
 
-ANALYSIS_CONFIGS = {ANALYSIS_VALID_MC: "json://${O2DPG_ROOT}/MC/config/analysis_testing/json/analysis-testing-mc.json",
-                    ANALYSIS_VALID_DATA: "json://${O2DPG_ROOT}/MC/config/analysis_testing/json/analysis-testing-data.json"}
+ANALYSIS_CONFIGS = {ANALYSIS_VALID_MC: "${O2DPG_ROOT}/MC/config/analysis_testing/json/analysis-testing-mc.json",
+                    ANALYSIS_VALID_DATA: "${O2DPG_ROOT}/MC/config/analysis_testing/json/analysis-testing-data.json"}
 
 # collect all analyses
 ANALYSES = []
 
-analysis_MCHistograms = {"name": "MCHistograms",
-                         "expected_output": None,
-                         "valid_for": [ANALYSIS_VALID_MC],
-                         "cmd": "o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysistutorial-mc-histograms {CONFIG} {AOD}"}
-ANALYSES.append(analysis_MCHistograms)
+#analysis_MCHistograms = {"name": "MCHistograms",
+#                         "expected_output": None,
+#                         "valid_for": [ANALYSIS_VALID_MC],
+#                         "cmd": "o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysistutorial-mc-histograms {CONFIG} {AOD}"}
+#ANALYSES.append(analysis_MCHistograms)
 analysis_Efficiency = {"name": "Efficiency",
                        "expected_output": ["AnalysisResults.root"],
-                       "valid_for": [ANALYSIS_VALID_MC],
-                       "cmd": "o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackextension {CONFIG} | o2-analysis-trackselection {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-qa-efficiency --eff-mc 1 --eff-mc-pos 1 --eff-mc-neg 1 {CONFIG} {AOD}"}
+                       "valid_for": [ANALYSIS_VALID_MC, ANALYSIS_VALID_DATA],
+                       "cmd": "o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackselection {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-qa-efficiency {CONFIG} {AOD}"}
 ANALYSES.append(analysis_Efficiency)
 analysis_EventTrackQA = {"name": "EventTrackQA",
                          "expected_output": ["AnalysisResults.root"],
                          "valid_for": [ANALYSIS_VALID_MC, ANALYSIS_VALID_DATA],
-                         "cmd": "o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackextension {CONFIG} | o2-analysis-trackselection {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-qa-event-track {CONFIG} {AOD}"}
+                         "cmd": ["o2-analysis-timestamp",
+                                 "o2-analysis-track-propagation",
+                                 "o2-analysis-trackselection",
+                                 "o2-analysis-multiplicity-table",
+                                 "o2-analysis-event-selection",
+                                 "o2-analysis-qa-event-track"]}
 ANALYSES.append(analysis_EventTrackQA)
+analysis_K0STrackingEfficiencyQA = {"name": "K0STrackingEfficiencyQA",
+                                    "expected_output": ["AnalysisResults.root"],
+                                    "valid_for": [ANALYSIS_VALID_MC, ANALYSIS_VALID_DATA],
+                                    "cmd": "o2-analysis-lf-lambdakzerobuilder {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackselection {CONFIG} | o2-analysis-pid-tpc {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-timestamp {CONFIG} | o2-analysis-multiplicity-table {CONFIG} | o2-analysis-qa-k0s-tracking-efficiency {CONFIG} {AOD}"}
+ANALYSES.append(analysis_K0STrackingEfficiencyQA)
 analysis_Validation = {"name": "Validation",
                        "expected_output": ["AnalysisResults.root"],
                        "valid_for": [ANALYSIS_VALID_MC, ANALYSIS_VALID_DATA],
@@ -119,13 +133,23 @@ analysis_Validation = {"name": "Validation",
 ANALYSES.append(analysis_Validation)
 analysis_PIDFull = {"name": "PIDFull",
                     "expected_output": ["AnalysisResults.root"],
-                    "valid_for": [ANALYSIS_VALID_MC],
-                    "cmd": "o2-analysis-dq-table-maker-mc {CONFIG} --severity error --shm-segment-size 12000000000 --aod-writer-json aodWriterTempConfig.json | o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackextension {CONFIG} | o2-analysis-trackselection {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-multiplicity-table {CONFIG} | o2-analysis-pid-tof-base {CONFIG} | o2-analysis-pid-tof {CONFIG} | o2-analysis-pid-tof-full {CONFIG} | o2-analysis-pid-tof-beta {CONFIG} | o2-analysis-pid-tpc-full {CONFIG} {AOD}"}
+                    "valid_for": [ANALYSIS_VALID_MC, ANALYSIS_VALID_DATA],
+                    "cmd": ["o2-analysis-ft0-corrected-table",
+                            "o2-analysis-timestamp",
+                            "o2-analysis-track-propagation",
+                            "o2-analysis-trackselection",
+                            "o2-analysis-event-selection",
+                            "o2-analysis-multiplicity-table",
+                            "o2-analysis-pid-tof-base",
+                            "o2-analysis-pid-tof --add-qa 1",
+                            "o2-analysis-pid-tof-full --add-qa 1",
+                            "o2-analysis-pid-tof-beta --add-qa 1",
+                            "o2-analysis-pid-tpc-full --add-qa 1"]}
 ANALYSES.append(analysis_PIDFull)
 analysis_PWGMMMFT = {"name": "PWGMMMFT",
                      "expected_output": ["AnalysisResults.root"],
                      "valid_for": [ANALYSIS_VALID_MC, ANALYSIS_VALID_DATA],
-                     "cmd": "o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackextension {CONFIG} | o2-analysis-trackselection {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-multiplicity-table {CONFIG} | o2-analysis-mm-dndeta-mft {CONFIG} {AOD}"}
+                     "cmd": "o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackselection {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-multiplicity-table {CONFIG} | o2-analysis-mm-dndeta-mft {CONFIG} {AOD}"}
 ANALYSES.append(analysis_PWGMMMFT)
 analysis_EventSelectionQA = {"name": "EventSelectionQA",
                              "expected_output": ["AnalysisResults.root"],
@@ -145,14 +169,24 @@ ANALYSES.append(analysis_CheckDataModelMC)
 analysis_LK0CFFemto = {"name": "LK0CFFemto",
                        "expected_output": ["AnalysisResults.root", "QAResults.root"],
                        "valid_for": [ANALYSIS_VALID_MC],
-                       "cmd": "o2-analysis-multiplicity-table {CONFIG} --aod-writer-json aodWriterTempConfig.json | o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackextension {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-pid-tof-base {CONFIG} | o2-analysis-pid-tof {CONFIG} | o2-analysis-pid-tpc {CONFIG} | o2-analysis-lf-lambdakzerobuilder {CONFIG} | o2-analysis-cf-femtodream-producer {CONFIG} {AOD}"}
+                       "cmd": "o2-analysis-multiplicity-table {CONFIG} --aod-writer-json aodWriterTempConfig.json | o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-pid-tof-base {CONFIG} | o2-analysis-pid-tof {CONFIG} | o2-analysis-pid-tpc {CONFIG} | o2-analysis-lf-lambdakzerobuilder {CONFIG} | o2-analysis-cf-femtodream-producer {CONFIG} {AOD}"}
 ANALYSES.append(analysis_LK0CFFemto)
-# FIXME Taken out, not working at the moment, discussing with the authors
-# analysis_PWGMMFwdVertexing = {"name": "PWGMMFwdVertexing",
-#                               "expected_output": ["AnalysisResults.root"],
-#                               "valid_for": [ANALYSIS_VALID_MC],
-#                               "cmd": "o2-analysis-mm-vertexing-fwd {CONFIG} {AOD}"}
-# ANALYSES.append(analysis_PWGMMFwdVertexing)
+analysis_PWGMMFwdVertexing = {"name": "PWGMMFwdVertexing",
+                              "expected_output": ["AnalysisResults.root"],
+                              "valid_for": [ANALYSIS_VALID_MC],
+                              "cmd": "o2-analysis-mm-vertexing-fwd {CONFIG} {AOD}"}
+ANALYSES.append(analysis_PWGMMFwdVertexing)
+analysis_PWGMMMDnDeta = {"name": "PWGMMMDnDeta",
+                         "expected_output": ["AnalysisResults.root"],
+                         "valid_for": [ANALYSIS_VALID_MC],
+                         "cmd": "o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-mm-particles-to-tracks {CONFIG} | o2-analysis-mm-dndeta {CONFIG} {AOD}"}
+ANALYSES.append(analysis_PWGMMMDnDeta)
+#analysis_PWGHFD0 = {"name": "PWGHFD0",
+#                    "expected_output": ["AnalysisResults.root"],
+#                    "valid_for": [ANALYSIS_VALID_MC],
+#                    "cmd": "o2-analysis-hf-track-index-skims-creator {CONFIG} | o2-analysis-hf-candidate-creator-2prong {CONFIG} | o2-analysis-hf-d0-candidate-selector {CONFIG} | o2-analysis-hf-task-d0 {CONFIG} | o2-analysis-timestamp {CONFIG} | o2-analysis-track-propagation {CONFIG} | o2-analysis-trackselection {CONFIG} | o2-analysis-event-selection {CONFIG} | o2-analysis-multiplicity-table {CONFIG} | o2-analysis-pid-tpc-full {CONFIG} | o2-analysis-pid-tof-base {CONFIG} | o2-analysis-pid-tof-full {CONFIG} {AOD}"}
+#ANALYSES.append(analysis_PWGHFD0)
+
 
 def make_merged_analysis(*analysis_names, accept_data_or_mc=ANALYSIS_VALID_MC):
     """merge CMD / DPL piping to one large pipe
@@ -249,6 +283,38 @@ def create_ana_task(name, cmd, output_dir, *, needs=None, shmsegmentsize="--shm-
     task['cmd'] = f"{cmd} {shmsegmentsize} {aodmemoryratelimit} {readers} {extraarguments}"
     return task
 
+def add_analysis_post_processing_tasks(workflow):
+    """add post-processing step to analysis tasks if possible
+
+    Args:
+        workflow: list
+            current list of tasks
+    """
+    analyses_to_add_for = {}
+    # collect analyses in current workflow
+    for task in workflow:
+        if ANALYSIS_LABEL in task["labels"] or ANALYSIS_LABEL_MERGED in task["labels"]:
+            analyses_to_add_for[task["name"]] = task
+
+    for ana in ANALYSES:
+        if not ana["expected_output"]:
+            continue
+        ana_name_raw = ana["name"]
+        post_processing_macro = join(O2DPG_ROOT, "MC", "analysis_testing", "post_processing", f"{ana_name_raw}.C")
+        if not exists(post_processing_macro):
+            continue
+        ana_name = full_ana_name(ana_name_raw)
+        if ana_name not in analyses_to_add_for:
+            continue
+        pot_ana = analyses_to_add_for[ana_name]
+        cwd = pot_ana["cwd"]
+        needs = [ana_name]
+        task = createTask(name=f"{ANALYSIS_LABEL}_post_processing_{ana_name_raw}", cwd=join(cwd, "post_processing"), lab=[ANALYSIS_LABEL, f"{ANALYSIS_LABEL}PostProcessing", ana_name_raw], cpu=1, mem='2000', needs=needs)
+        input_files = ",".join([f"../{eo}" for eo in ana["expected_output"]])
+        cmd = f"\\(\\\"{input_files}\\\",\\\"./\\\"\\)"
+        task["cmd"] = f"root -l -b -q {post_processing_macro}{cmd}"
+        workflow.append(task)
+
 def add_analysis_tasks(workflow, input_aod="./AO2D.root", output_dir="./Analysis", *, analyses_only=None, is_mc=True, add_merged_task=False, config=None, needs=None):
     """Add default analyses to user workflow
 
@@ -270,11 +336,21 @@ def add_analysis_tasks(workflow, input_aod="./AO2D.root", output_dir="./Analysis
             if specified, list of other tasks which need to be run before
     """
     input_aod = abspath(input_aod)
+    if input_aod.endswith(".txt") and not input_aod.startswith("@"):
+        input_aod = f"@{input_aod}"
     data_or_mc = ANALYSIS_VALID_MC if is_mc else ANALYSIS_VALID_DATA
     configuration = ANALYSIS_CONFIGS[data_or_mc] if config is None else config
+    configuration = configuration.replace("json://", "")
+    configuration = abspath(normpath(configuration))
+    configuration = f"json://{configuration}"
     for ana in ANALYSES:
-        if data_or_mc in ana["valid_for"] and (not analyses_only or (ana["name"] in analyses_only)): 
-            workflow.append(create_ana_task(ana["name"], ana["cmd"].format(CONFIG=f"--configuration {configuration}", AOD=f"--aod-file {input_aod}"), output_dir, needs=needs, is_mc=is_mc))
+        if data_or_mc in ana["valid_for"] and (not analyses_only or (ana["name"] in analyses_only)):
+            if type(ana["cmd"]) is list:
+                piped_analysis = f" --configuration {configuration} | ".join(ana["cmd"])
+                piped_analysis += f" --configuration {configuration} --aod-file {input_aod}"
+                workflow.append(create_ana_task(ana["name"], piped_analysis, output_dir, needs=needs, is_mc=is_mc))
+            else:
+                workflow.append(create_ana_task(ana["name"], ana["cmd"].format(CONFIG=f"--configuration {configuration}", AOD=f"--aod-file {input_aod}"), output_dir, needs=needs, is_mc=is_mc))
             continue
         print(f"Analysis {ana['name']} not added since not compatible with isMC={is_mc} and filetred analyses {analyses_only}")
     if add_merged_task:
@@ -284,6 +360,8 @@ def add_analysis_tasks(workflow, input_aod="./AO2D.root", output_dir="./Analysis
         task = create_ana_task(ana["name"], ana["cmd"].format(CONFIG=f"--configuration {configuration}", AOD=f"--aod-file {input_aod}"), output_dir, needs=needs, is_mc=is_mc)
         task["labels"].append(ANALYSIS_LABEL_MERGED)
         workflow.append(task)
+    # append potential post-processing
+    add_analysis_post_processing_tasks(workflow)
         
 def add_analysis_qc_upload_tasks(workflow, period_name, run_number, pass_name):
     """add o2-qc-upload-root-objects to specified analysis tasks
@@ -345,7 +423,7 @@ def run(args):
 
 def main():
     """entry point when run directly from command line"""
-    parser = argparse.ArgumentParser(description='Create analysi test workflow')
+    parser = argparse.ArgumentParser(description='Create analysis test workflow')
     parser.add_argument("-f", "--input-file", dest="input_file", default="./AO2D.root", help="full path to the AO2D input", required=True)
     parser.add_argument("-a", "--analysis-dir", dest="analysis_dir", default="./Analysis", help="the analysis output and working directory")
     parser.add_argument("-o", "--output", default="workflow_analysis_test.json", help="the workflow file name")
@@ -354,7 +432,7 @@ def main():
     parser.add_argument("--run-number", dest="run_number", type=int, default=300000, help="the run number")
     parser.add_argument("--pass-name", dest="pass_name", help="pass name")
     parser.add_argument("--period-name", dest="period_name", help="period name")
-    parser.add_argument("--config", help="overwrite the default config JSON. Pass as json://</path/to/file>")
+    parser.add_argument("--config", help="overwrite the default config JSON. Pass as </path/to/file>, will be automatically configured to json://")
     parser.add_argument("--only-analyses", dest="only_analyses", nargs="*", help="filter only on these analyses")
     parser.add_argument("--merged-task", dest="merged_task", action="store_true", help="add merged analysis task (one pipe for all) with name \"MergedAnalyses\"")
     parser.set_defaults(func=run)

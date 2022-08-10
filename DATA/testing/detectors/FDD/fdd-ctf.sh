@@ -12,10 +12,10 @@ NTHREADS=2
 ARGS_CTF="--min-file-size 500000000  --max-ctf-per-file 10000 --meta-output-dir /data/epn2eos_tool/epn2eos --append-det-to-period 0"
 
 MYDIR="$(dirname $(readlink -f $0))"
-PROXY_INSPEC="digits:FDD/DIGITSBC/0;channels:FDD/DIGITSCH/0;eos:***/INFORMATION;dd:FLP/DISTSUBTIMEFRAME"
+PROXY_INSPEC="digits:FDD/DIGITSBC/0;channels:FDD/DIGITSCH/0;eos:***/INFORMATION;dd:FLP/DISTSUBTIMEFRAME/0"
 IN_CHANNEL="--channel-config 'name=readout-proxy,type=pull,method=connect,address=ipc://@$INRAWCHANNAME,transport=shmem,rateLogging=1'"
 
 o2-dpl-raw-proxy ${ARGS_ALL} --readout-proxy "${IN_CHANNEL}" --dataspec "${PROXY_INSPEC}" \
 | o2-fdd-entropy-encoder-workflow ${ARGS_ALL} --configKeyValues "$ARGS_ALL_CONFIG;" ${CTF_DICT} \
 | o2-ctf-writer-workflow ${ARGS_ALL} ${ARGS_CTF} --configKeyValues "$ARGS_ALL_CONFIG;" --onlyDet FDD --output-dir $CTF_DIR --ctf-dict-dir $FILEWORKDIR --output-type ctf \
-| o2-dpl-run $ARGS_ALL $GLOBALDPLOPT --dds # option instead iof run to export DDS xml file
+| o2-dpl-run $ARGS_ALL $GLOBALDPLOPT --dds ${WORKFLOWMODE_FILE} # option instead iof run to export DDS xml file

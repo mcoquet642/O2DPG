@@ -28,6 +28,8 @@ LIST_OF_DETECTORS="ITS,MFT,TPC,TOF,FT0,MID,EMC,PHS,CPV,ZDC,FDD,HMP,FV0,TRD,MCH,C
 
 LIST_OF_GLORECO="ITSTPC,TPCTRD,ITSTPCTRD,TPCTOF,ITSTPCTOF,MFTMCH,MCHMID,PRIMVTX,SECVTX,AOD"
 
+LIST_OF_PID="FT0-TOF"
+
 # Detectors used in the workflow / enabled parameters
 if [[ -z "${WORKFLOW_DETECTORS+x}" ]] || [[ "0$WORKFLOW_DETECTORS" == "0ALL" ]]; then export WORKFLOW_DETECTORS=$LIST_OF_DETECTORS; fi
 if [[ -z "${WORKFLOW_DETECTORS_QC+x}" ]] || [[ "0$WORKFLOW_DETECTORS_QC" == "0ALL" ]]; then export WORKFLOW_DETECTORS_QC="$WORKFLOW_DETECTORS,$LIST_OF_GLORECO"; fi
@@ -44,7 +46,7 @@ if [[ -z "$CTF_MAXDETEXT" ]]; then export CTF_MAXDETEXT=0; fi             # exte
 if [[ -z "$TFDELAY" ]];       then export TFDELAY=100; fi                 # Delay in seconds between publishing time frames
 if [[ -z "$GPUTYPE" ]];       then export GPUTYPE=CPU; fi                 # GPU Tracking backend to use, can be CPU / CUDA / HIP / OCL / OCL2
 if [[ -z "$DDSHMSIZE" ]];     then export DDSHMSIZE=$(( 8 << 10 )); fi    # Size of shared memory for DD Input
-if [[ -z "$DDHDRSIZE" ]];     then export DDHDRSIZE=$(( 2 << 10 )); fi    # Size of shared memory for DD Input
+if [[ -z "$DDHDRSIZE" ]];     then export DDHDRSIZE=$(( 1 << 10 )); fi    # Size of shared memory for DD Input
 if [[ -z "$GPUMEMSIZE" ]];    then export GPUMEMSIZE=$(( 24 << 30 )); fi  # Size of allocated GPU memory (if GPUTYPE != CPU)
 if [[ -z "$HOSTMEMSIZE" ]];   then export HOSTMEMSIZE=0; fi               # Size of allocated host memory for GPU reconstruction (0 = default)
 if [[ -z "$CREATECTFDICT" ]]; then export CREATECTFDICT=0; fi             # Create CTF dictionary
@@ -66,6 +68,7 @@ if [[ -z $FILEWORKDIRRUN ]];  then export FILEWORKDIRRUN=$FILEWORKDIR; fi # dire
 if [[ -z "$RAWINPUTDIR" ]];   then export RAWINPUTDIR=$FILEWORKDIR; fi    # Directory where to find input files (raw files / raw tf files / ctf files)
 if [[ -z "$EPNSYNCMODE" ]];   then export EPNSYNCMODE=0; fi               # Is this workflow supposed to run on EPN for sync processing? Will enable InfoLogger / metrics / fetching QC JSONs from consul...
 if [[ -z "$BEAMTYPE" ]];      then export BEAMTYPE=PbPb; fi               # Beam type, must be PbPb, pp, pPb, cosmic, technical
+if [[ -z "$RUNTYPE" ]];       then export RUNTYPE=Standalone; fi          # Run Type, standalone for local tests, otherwise PHYSICS, COSMICS, TECHNICAL, SYNTHETIC
 if [[ -z $IS_SIMULATED_DATA ]]; then export IS_SIMULATED_DATA=1; fi       # processing simulated data
 if [[ $EPNSYNCMODE == 0 ]]; then
   if [[ -z "$SHMSIZE" ]];       then export SHMSIZE=$(( 8 << 30 )); fi    # Size of shared memory for messages
@@ -79,15 +82,14 @@ else # Defaults when running on the EPN
   if [[ "0$GEN_TOPO_CALIB_WORKFLOW" != "01" ]]; then
     if [[ -z "$SHMSIZE" ]];              then export SHMSIZE=$(( 32 << 30 )); fi
   else
-    if [[ -z "$SHMSIZE" ]];              then export SHMSIZE=$(( 256 << 30 )); fi
+    if [[ -z "$SHMSIZE" ]];              then export SHMSIZE=$(( 112 << 30 )); fi
   fi
   if [[ -z "$NGPUS" ]];                then export NGPUS=4; fi
   if [[ -z "$EXTINPUT" ]];             then export EXTINPUT=1; fi
   if [[ -z "$EPNPIPELINES" ]];         then export EPNPIPELINES=1; fi
   if [[ -z "$SHMTHROW" ]];             then export SHMTHROW=0; fi
   if [[ -z "$TIMEFRAME_SHM_LIMIT" ]];  then export TIMEFRAME_SHM_LIMIT=$(( $SHMSIZE / 2 )); fi
-  if [[ -z "$TIMEFRAME_RATE_LIMIT" ]]; then export TIMEFRAME_RATE_LIMIT=0; fi
-  if [[ -z "$EDJSONS_DIR" ]];          then export EDJSONS_DIR="/home/ed/jsons"; fi
+  if [[ -z "$EDJSONS_DIR" ]];          then export EDJSONS_DIR="/scratch/services/ed/jsons_${RUNTYPE}"; fi
   if [[ -z "${WORKFLOW_DETECTORS_FLP_PROCESSING+x}" ]]; then export WORKFLOW_DETECTORS_FLP_PROCESSING="TOF"; fi # Current default in sync processing is that FLP processing is only enabled for TOF
   if [[ -z "$GEN_TOPO_AUTOSCALE_PROCESSES" ]];          then export GEN_TOPO_AUTOSCALE_PROCESSES=1; fi # On the EPN we should make sure to always use the node to the full extent
 fi
@@ -158,6 +160,23 @@ has_detector_qc()
 has_matching_qc()
 {
   has_detector_matching $1 && [[ $WORKFLOW_DETECTORS_QC =~ (^|,)"$1"(,|$) ]]
+}
+
+has_pid_qc()
+{
+    PIDDETECTORS=$(echo $1 | tr "-" "\n")
+    for PIDDETECTOR in $PIDDETECTORS; do
+        if [[ $PIDDETECTOR == "TOF" ]]; then
+            (! has_detectors_reco ITS TPC TOF || ! has_detector_matching ITSTPCTOF) && return 1
+        fi
+        ! has_detector_qc $PIDDETECTOR && return 1
+    done
+    return 0
+}
+
+has_tof_matching_source()
+{
+  [[ $TOF_SOURCES =~ (^|,)"$1"(,|$) ]]
 }
 
 workflow_has_parameter()
